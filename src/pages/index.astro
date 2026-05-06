@@ -1,0 +1,219 @@
+---
+import "../styles/global.css";
+---
+
+<html lang="zh-Hant">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>暫存留言板</title>
+	</head>
+	<body class="min-h-screen bg-gradient-to-b from-gray-50 to-white text-gray-900">
+		<div class="mx-auto max-w-3xl p-4">
+			<div class="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-gray-100">
+				<div class="rounded-2xl bg-gray-50 p-4 ring-1 ring-gray-100" style="background-color:#f3f4f6;" >
+					<h1 class="mb-3 text-xl font-semibold">暫存留言板</h1>
+
+					<textarea
+						id="content"
+						autofocus
+						rows="5"
+						placeholder="在這裡輸入留言，按下方按鈕送出..."
+						class="w-full resize-none rounded-xl border border-gray-200 bg-white p-3 text-sm shadow-sm focus:border-blue-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-100"
+					></textarea>
+
+					<div class="mt-3 flex flex-wrap gap-2">
+						<button
+							type="button"
+							data-source="Email"
+							class="rounded-2xl bg-blue-600 px-5 py-3 text-lg font-semibold text-white shadow-sm hover:bg-blue-700 active:bg-blue-800" style="padding:0.75rem 1.25rem; font-size:1.125rem;"
+						>
+							Email
+						</button>
+						<button
+							type="button"
+							data-source="LINE"
+							class="rounded-2xl bg-emerald-600 px-5 py-3 text-lg font-semibold text-white shadow-sm hover:bg-emerald-700 active:bg-emerald-800" style="padding:0.75rem 1.25rem; font-size:1.125rem;"
+						>
+							LINE
+						</button>
+						<button
+							type="button"
+							data-source="Messenger"
+							class="rounded-2xl bg-indigo-600 px-5 py-3 text-lg font-semibold text-white shadow-sm hover:bg-indigo-700 active:bg-indigo-800" style="padding:0.75rem 1.25rem; font-size:1.125rem;"
+						>
+							Messenger
+						</button>
+						<button
+							type="button"
+							data-source="儲存"
+							class="rounded-2xl bg-gray-900 px-5 py-3 text-lg font-semibold text-white shadow-sm hover:bg-gray-800 active:bg-gray-700" style="padding:0.75rem 1.25rem; font-size:1.125rem;"
+						>
+							儲存
+						</button>
+					</div>
+				</div>
+
+				<div class="mt-4 rounded-2xl bg-blue-50 p-3 ring-1 ring-blue-100" style="background-color:#eff6ff;" >
+					<div
+						class="max-h-[70vh] space-y-3 overflow-auto pr-1"
+						id="messages"
+					></div>
+				</div>
+			</div>
+		</div>
+
+		<script>
+			const apiUrl = "/api/inbox";
+			const textarea = document.getElementById("content");
+			const messagesEl = document.getElementById("messages");
+
+			function formatCreatedAt(iso) {
+				if (!iso) return "";
+				try {
+					return new Date(iso).toLocaleString();
+				} catch {
+					return "";
+				}
+			}
+
+			function createCard(item) {
+				const card = document.createElement("div");
+				card.className =
+					"rounded-2xl border border-gray-200 bg-white p-3 shadow-sm";
+
+				const top = document.createElement("div");
+				top.className =
+					"mb-2 flex items-center justify-between gap-3";
+
+				const headerLeft = document.createElement("div");
+				headerLeft.className = "min-w-0";
+
+				const src = item?.source ?? "";
+				const createdAt = formatCreatedAt(item?.createdAt);
+
+				const meta = document.createElement("div");
+				meta.className = "truncate text-xs font-medium text-gray-600";
+				meta.textContent = createdAt ? `${src} · ${createdAt}` : src;
+
+				headerLeft.appendChild(meta);
+
+				const delBtn = document.createElement("button");
+				delBtn.type = "button";
+				delBtn.textContent = "刪除";
+				delBtn.setAttribute("data-action", "delete");
+				delBtn.setAttribute(
+					"data-created-at",
+					item?.createdAt ?? ""
+				);
+				delBtn.className =
+					"rounded-xl bg-red-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-red-700 active:bg-red-800";
+
+				top.appendChild(headerLeft);
+				top.appendChild(delBtn);
+
+				const content = document.createElement("p");
+				content.className =
+					"whitespace-pre-wrap break-words text-sm leading-relaxed text-gray-900";
+				content.textContent = item?.content ?? "";
+
+				card.appendChild(top);
+				card.appendChild(content);
+
+				return card;
+			}
+
+			async function loadMessages() {
+				const res = await fetch(apiUrl);
+				if (!res.ok) {
+					messagesEl.innerHTML =
+						'<div class="text-sm text-red-600">載入失敗</div>';
+					return;
+				}
+
+				const items = await res.json();
+				messagesEl.innerHTML = "";
+
+				if (!Array.isArray(items) || items.length === 0) {
+					messagesEl.innerHTML =
+						'<div class="text-sm text-gray-500">目前沒有訊息</div>';
+					return;
+				}
+
+				for (const item of items) {
+						messagesEl.appendChild(createCard(item));
+				}
+			}
+
+			async function submit(source) {
+				const content = textarea?.value ?? "";
+				if (!content.trim()) return;
+
+				const res = await fetch(apiUrl, {
+					method: "POST",
+					headers: {
+						"Content-Type": "application/json",
+					},
+					body: JSON.stringify({ content, source }),
+				});
+
+				if (!res.ok) {
+					let msg = "送出失敗";
+					try {
+						const data = await res.json();
+						if (data?.error) msg = data.error;
+					} catch {}
+					alert(msg);
+					return;
+				}
+
+				textarea.value = "";
+				await loadMessages();
+			}
+
+			async function removeItem(createdAt) {
+				if (!createdAt) return;
+
+				const res = await fetch(apiUrl, {
+					method: "DELETE",
+					headers: {
+						"Content-Type": "application/json",
+					},
+					body: JSON.stringify({ createdAt }),
+				});
+
+				if (!res.ok) {
+					let msg = "刪除失敗";
+					try {
+						const data = await res.json();
+						if (data?.error) msg = data.error;
+					} catch {}
+					alert(msg);
+					return;
+				}
+
+				await loadMessages();
+			}
+
+			document.addEventListener("click", (e) => {
+				const btnSource = e.target?.closest?.("button[data-source]");
+				if (btnSource) {
+					const source = btnSource.getAttribute("data-source");
+					if (!source) return;
+					submit(source);
+					return;
+				}
+
+				const btnDel = e.target?.closest?.("button[data-action='delete']");
+				if (!btnDel) return;
+				const createdAt = btnDel.getAttribute("data-created-at");
+
+				if (confirm("確定要刪除此筆留言嗎？")) {
+					removeItem(createdAt);
+				}
+			});
+
+			loadMessages();
+		</script>
+	</body>
+</html>
