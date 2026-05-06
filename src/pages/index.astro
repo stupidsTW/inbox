@@ -7,12 +7,24 @@ import "../styles/global.css";
 		<meta charset="UTF-8" />
 		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
 		<title>暫存留言板</title>
+		<meta name="theme-color" content="#1f2937" />
+		<link rel="manifest" href="/manifest.webmanifest" />
+		<link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+		<link rel="apple-touch-icon" href="/favicon.svg" />
 	</head>
 	<body class="min-h-screen bg-gradient-to-b from-gray-50 to-white text-gray-900">
 		<div class="mx-auto max-w-3xl p-4">
 			<div class="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-gray-100">
 				<div class="rounded-2xl bg-gray-50 p-4 ring-1 ring-gray-100" style="background-color:#f3f4f6;" >
-					<h1 class="mb-3 text-xl font-semibold">暫存留言板</h1>
+					<h1 class="mb-2 text-xl font-semibold">暫存留言板</h1>
+
+					<input
+						id="pass"
+						type="password"
+						placeholder="輸入密碼"
+						class="w-full rounded-xl border border-gray-200 bg-white p-3 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100"
+						style="padding:0.75rem 1rem;"
+					/>
 
 					<textarea
 						id="content"
@@ -64,8 +76,14 @@ import "../styles/global.css";
 		</div>
 
 		<script>
+			// PWA (service worker) - only on HTTPS
+			if ("serviceWorker" in navigator) {
+				navigator.serviceWorker.register("/sw.js").catch(() => {});
+			}
+
 			const apiUrl = "/api/inbox";
 			const textarea = document.getElementById("content");
+			const passInput = document.getElementById("pass");
 			const messagesEl = document.getElementById("messages");
 
 			function formatCreatedAt(iso) {
@@ -147,6 +165,11 @@ import "../styles/global.css";
 
 			async function submit(source) {
 				const content = textarea?.value ?? "";
+				const pass = passInput?.value ?? "";
+				if (!pass.trim()) {
+					alert("請先輸入密碼");
+					return;
+				}
 				if (!content.trim()) return;
 
 				const res = await fetch(apiUrl, {
@@ -154,7 +177,7 @@ import "../styles/global.css";
 					headers: {
 						"Content-Type": "application/json",
 					},
-					body: JSON.stringify({ content, source }),
+					body: JSON.stringify({ content, source, pass }),
 				});
 
 				if (!res.ok) {
@@ -162,6 +185,12 @@ import "../styles/global.css";
 					try {
 						const data = await res.json();
 						if (data?.error) msg = data.error;
+						if (
+							typeof data?.hasEnvPass === "boolean" ||
+							typeof data?.hasProcessPass === "boolean"
+						) {
+								msg += ` (hasEnvPass=${data?.hasEnvPass}, hasProcessPass=${data?.hasProcessPass})`;
+						}
 					} catch {}
 					alert(msg);
 					return;
@@ -173,13 +202,18 @@ import "../styles/global.css";
 
 			async function removeItem(createdAt) {
 				if (!createdAt) return;
+				const pass = passInput?.value ?? "";
+				if (!pass.trim()) {
+					alert("請先輸入密碼");
+					return;
+				}
 
 				const res = await fetch(apiUrl, {
 					method: "DELETE",
 					headers: {
 						"Content-Type": "application/json",
 					},
-					body: JSON.stringify({ createdAt }),
+					body: JSON.stringify({ createdAt, pass }),
 				});
 
 				if (!res.ok) {
@@ -187,6 +221,12 @@ import "../styles/global.css";
 					try {
 						const data = await res.json();
 						if (data?.error) msg = data.error;
+						if (
+							typeof data?.hasEnvPass === "boolean" ||
+							typeof data?.hasProcessPass === "boolean"
+						) {
+							msg += ` (hasEnvPass=${data?.hasEnvPass}, hasProcessPass=${data?.hasProcessPass})`;
+						}
 					} catch {}
 					alert(msg);
 					return;

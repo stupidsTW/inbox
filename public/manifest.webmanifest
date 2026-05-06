@@ -1,0 +1,17 @@
+{
+  "name": "暫存留言板",
+  "short_name": "暫存留言板",
+  "description": "Astro + Gist 暫存留言板",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#1f2937",
+  "icons": [
+    {
+      "src": "/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml"
+    }
+  ]
+}

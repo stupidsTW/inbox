@@ -52,8 +52,29 @@ async function fetchGistItems(): Promise<InboxItem[]> {
   }
 }
 
+function getEnv() {
+  return (import.meta as any).env ?? {};
+}
+
+function getSecretPass() {
+  const env = getEnv();
+  const passRaw = (env.PASS ?? process.env.PASS) as unknown;
+  if (typeof passRaw !== "string") return undefined;
+
+  // dotenv may include surrounding quotes depending on how the file was written.
+  let pass = passRaw.trim();
+  if (
+    (pass.startsWith('"') && pass.endsWith('"')) ||
+    (pass.startsWith("'") && pass.endsWith("'"))
+  ) {
+    pass = pass.slice(1, -1).trim();
+  }
+
+  return pass ? pass : undefined;
+}
+
 async function patchGistItems(items: InboxItem[]): Promise<InboxItem[]> {
-  const env = (import.meta as any).env ?? {};
+  const env = getEnv();
   const gistId = env.GIST_ID ?? process.env.GIST_ID;
   const ghToken = env.GH_TOKEN ?? process.env.GH_TOKEN;
 
@@ -119,10 +140,43 @@ export const POST: APIRoute = async ({ request }) => {
     });
   }
 
-  const { content, source } = payload as {
+  const { content, source, pass } = payload as {
     content?: unknown;
     source?: unknown;
+    pass?: unknown;
   };
+
+  const secretPass = getSecretPass();
+  if (!secretPass) {
+    const env = getEnv();
+    return new Response(
+      JSON.stringify({
+        error: "Server misconfigured",
+        hasEnvPass: typeof env.PASS === "string" && env.PASS.trim().length > 0,
+        hasProcessPass:
+          typeof process.env.PASS === "string" &&
+          process.env.PASS.trim().length > 0,
+      }),
+      {
+        status: 500,
+        headers: { "Content-Type": "application/json; charset=utf-8" },
+      },
+    );
+  }
+
+  if (typeof pass !== "string" || !pass.trim()) {
+    return new Response(JSON.stringify({ error: "Missing/invalid pass" }), {
+      status: 401,
+      headers: { "Content-Type": "application/json; charset=utf-8" },
+    });
+  }
+
+  if (pass !== secretPass) {
+    return new Response(JSON.stringify({ error: "Unauthorized" }), {
+      status: 401,
+      headers: { "Content-Type": "application/json; charset=utf-8" },
+    });
+  }
 
   if (typeof content !== "string" || !content.trim()) {
     return new Response(JSON.stringify({ error: "Missing/invalid content" }), {
@@ -180,9 +234,42 @@ export const DELETE: APIRoute = async ({ request }) => {
     });
   }
 
-  const { createdAt } = payload as {
+  const { createdAt, pass } = payload as {
     createdAt?: unknown;
+    pass?: unknown;
   };
+
+  const secretPass = getSecretPass();
+  if (!secretPass) {
+    const env = getEnv();
+    return new Response(
+      JSON.stringify({
+        error: "Server misconfigured",
+        hasEnvPass: typeof env.PASS === "string" && env.PASS.trim().length > 0,
+        hasProcessPass:
+          typeof process.env.PASS === "string" &&
+          process.env.PASS.trim().length > 0,
+      }),
+      {
+        status: 500,
+        headers: { "Content-Type": "application/json; charset=utf-8" },
+      },
+    );
+  }
+
+  if (typeof pass !== "string" || !pass.trim()) {
+    return new Response(JSON.stringify({ error: "Missing/invalid pass" }), {
+      status: 401,
+      headers: { "Content-Type": "application/json; charset=utf-8" },
+    });
+  }
+
+  if (pass !== secretPass) {
+    return new Response(JSON.stringify({ error: "Unauthorized" }), {
+      status: 401,
+      headers: { "Content-Type": "application/json; charset=utf-8" },
+    });
+  }
 
   if (typeof createdAt !== "string" || !createdAt.trim()) {
     return new Response(
