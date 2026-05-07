@@ -12,8 +12,91 @@ type InboxItem = {
 
 const GIST_FILE_NAME = "inbox.json";
 
+function getEnv() {
+  return (import.meta as any).env ?? {};
+}
+
+function getSecretPass() {
+  const env = getEnv();
+  const passRaw = (env.PASS ?? process.env.PASS) as unknown;
+  if (typeof passRaw !== "string") return undefined;
+
+  let pass = passRaw.trim();
+  if (
+    (pass.startsWith('"') && pass.endsWith('"')) ||
+    (pass.startsWith("'") && pass.endsWith("'"))
+  ) {
+    pass = pass.slice(1, -1).trim();
+  }
+
+  return pass ? pass : undefined;
+}
+
+function getAppsScriptUrl() {
+  const env = getEnv();
+  const urlRaw = (env.APPS_SCRIPT_URL ?? process.env.APPS_SCRIPT_URL) as
+    | string
+    | undefined;
+  if (typeof urlRaw !== "string") return undefined;
+  const url = urlRaw.trim();
+  return url ? url : undefined;
+}
+
+function normalizeItems(payload: unknown): InboxItem[] {
+  // apps script could return:
+  // 1) array
+  // 2) { items: [...] }
+  // 3) { inbox: [...] }
+  if (Array.isArray(payload)) return payload as InboxItem[];
+  if (payload && typeof payload === "object") {
+    const obj = payload as any;
+    if (Array.isArray(obj.items)) return obj.items as InboxItem[];
+    if (Array.isArray(obj.inbox)) return obj.inbox as InboxItem[];
+  }
+  return [];
+}
+
+async function callAppsScript(action: string, params: Record<string, string>) {
+  const appsUrl = getAppsScriptUrl();
+  if (!appsUrl) throw new Error("Missing env var: APPS_SCRIPT_URL");
+
+  const body = new URLSearchParams({
+    action,
+    ...params,
+  }).toString();
+
+  const res = await fetch(appsUrl, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/x-www-form-urlencoded;charset=UTF-8",
+      Accept: "application/json",
+    },
+    body,
+  });
+
+  if (!res.ok) {
+    const text = await res.text().catch(() => "");
+    throw new Error(`Apps Script call failed: ${res.status} ${text}`);
+  }
+
+  // Sometimes Apps Script returns a JSON string; handle both.
+  const contentType = res.headers.get("content-type") ?? "";
+  if (contentType.includes("application/json")) {
+    const data = await res.json().catch(() => null);
+    return normalizeItems(data);
+  }
+
+  const text = await res.text();
+  try {
+    const parsed = JSON.parse(text);
+    return normalizeItems(parsed);
+  } catch {
+    return [];
+  }
+}
+
 async function fetchGistItems(): Promise<InboxItem[]> {
-  const env = (import.meta as any).env ?? {};
+  const env = getEnv();
   const gistId = env.GIST_ID ?? process.env.GIST_ID;
   const ghToken = env.GH_TOKEN ?? process.env.GH_TOKEN;
 
@@ -47,30 +130,8 @@ async function fetchGistItems(): Promise<InboxItem[]> {
     if (!Array.isArray(parsed)) return [];
     return parsed as InboxItem[];
   } catch {
-    // 如果舊內容不是合法 JSON，就直接回傳空陣列避免整體服務掛掉
     return [];
   }
-}
-
-function getEnv() {
-  return (import.meta as any).env ?? {};
-}
-
-function getSecretPass() {
-  const env = getEnv();
-  const passRaw = (env.PASS ?? process.env.PASS) as unknown;
-  if (typeof passRaw !== "string") return undefined;
-
-  // dotenv may include surrounding quotes depending on how the file was written.
-  let pass = passRaw.trim();
-  if (
-    (pass.startsWith('"') && pass.endsWith('"')) ||
-    (pass.startsWith("'") && pass.endsWith("'"))
-  ) {
-    pass = pass.slice(1, -1).trim();
-  }
-
-  return pass ? pass : undefined;
 }
 
 async function patchGistItems(items: InboxItem[]): Promise<InboxItem[]> {
@@ -108,10 +169,24 @@ async function patchGistItems(items: InboxItem[]): Promise<InboxItem[]> {
 
 export const GET: APIRoute = async () => {
   try {
+    if (getAppsScriptUrl()) {
+      const items = await callAppsScript("get", {});
+      return new Response(JSON.stringify(items), {
+        status: 200,
+        headers: {
+          "Content-Type": "application/json; charset=utf-8",
+          "X-Backend": "apps-script",
+        },
+      });
+    }
+
     const items = await fetchGistItems();
     return new Response(JSON.stringify(items), {
       status: 200,
-      headers: { "Content-Type": "application/json; charset=utf-8" },
+      headers: {
+        "Content-Type": "application/json; charset=utf-8",
+        "X-Backend": "gist",
+      },
     });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Unknown error";
@@ -192,7 +267,23 @@ export const POST: APIRoute = async ({ request }) => {
     });
   }
 
+  const appsUrl = getAppsScriptUrl();
   try {
+    if (appsUrl) {
+      const items = await callAppsScript("add", {
+        content,
+        source,
+        pass: pass,
+      });
+      return new Response(JSON.stringify(items), {
+        status: 200,
+        headers: {
+          "Content-Type": "application/json; charset=utf-8",
+          "X-Backend": "apps-script",
+        },
+      });
+    }
+
     const oldItems = await fetchGistItems();
     const newItem: InboxItem = {
       content,
@@ -205,7 +296,10 @@ export const POST: APIRoute = async ({ request }) => {
 
     return new Response(JSON.stringify(result), {
       status: 200,
-      headers: { "Content-Type": "application/json; charset=utf-8" },
+      headers: {
+        "Content-Type": "application/json; charset=utf-8",
+        "X-Backend": "gist",
+      },
     });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Unknown error";
@@ -281,14 +375,32 @@ export const DELETE: APIRoute = async ({ request }) => {
     );
   }
 
+  const appsUrl = getAppsScriptUrl();
   try {
+    if (appsUrl) {
+      const items = await callAppsScript("delete", {
+        createdAt: createdAt,
+        pass: pass,
+      });
+      return new Response(JSON.stringify(items), {
+        status: 200,
+        headers: {
+          "Content-Type": "application/json; charset=utf-8",
+          "X-Backend": "apps-script",
+        },
+      });
+    }
+
     const oldItems = await fetchGistItems();
     const updated = oldItems.filter((it) => it.createdAt !== createdAt);
     const result = await patchGistItems(updated);
 
     return new Response(JSON.stringify(result), {
       status: 200,
-      headers: { "Content-Type": "application/json; charset=utf-8" },
+      headers: {
+        "Content-Type": "application/json; charset=utf-8",
+        "X-Backend": "gist",
+      },
     });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Unknown error";
