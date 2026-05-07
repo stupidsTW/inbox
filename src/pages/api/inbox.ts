@@ -173,14 +173,20 @@ export const GET: APIRoute = async () => {
       const items = await callAppsScript("get", {});
       return new Response(JSON.stringify(items), {
         status: 200,
-        headers: { "Content-Type": "application/json; charset=utf-8" },
+        headers: {
+          "Content-Type": "application/json; charset=utf-8",
+          "X-Backend": "apps-script",
+        },
       });
     }
 
     const items = await fetchGistItems();
     return new Response(JSON.stringify(items), {
       status: 200,
-      headers: { "Content-Type": "application/json; charset=utf-8" },
+      headers: {
+        "Content-Type": "application/json; charset=utf-8",
+        "X-Backend": "gist",
+      },
     });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Unknown error";
@@ -271,7 +277,10 @@ export const POST: APIRoute = async ({ request }) => {
       });
       return new Response(JSON.stringify(items), {
         status: 200,
-        headers: { "Content-Type": "application/json; charset=utf-8" },
+        headers: {
+          "Content-Type": "application/json; charset=utf-8",
+          "X-Backend": "apps-script",
+        },
       });
     }
 
@@ -287,7 +296,10 @@ export const POST: APIRoute = async ({ request }) => {
 
     return new Response(JSON.stringify(result), {
       status: 200,
-      headers: { "Content-Type": "application/json; charset=utf-8" },
+      headers: {
+        "Content-Type": "application/json; charset=utf-8",
+        "X-Backend": "gist",
+      },
     });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Unknown error";
@@ -372,7 +384,10 @@ export const DELETE: APIRoute = async ({ request }) => {
       });
       return new Response(JSON.stringify(items), {
         status: 200,
-        headers: { "Content-Type": "application/json; charset=utf-8" },
+        headers: {
+          "Content-Type": "application/json; charset=utf-8",
+          "X-Backend": "apps-script",
+        },
       });
     }
 
@@ -382,7 +397,10 @@ export const DELETE: APIRoute = async ({ request }) => {
 
     return new Response(JSON.stringify(result), {
       status: 200,
-      headers: { "Content-Type": "application/json; charset=utf-8" },
+      headers: {
+        "Content-Type": "application/json; charset=utf-8",
+        "X-Backend": "gist",
+      },
     });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Unknown error";
