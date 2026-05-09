@@ -142,7 +142,7 @@ import "../styles/global.css";
 			}
 
 			async function loadMessages() {
-				const res = await fetch(apiUrl);
+				const res = await fetch(apiUrl, { cache: "no-store" });
 				if (!res.ok) {
 					messagesEl.innerHTML =
 						'<div class="text-sm text-red-600">載入失敗</div>';
